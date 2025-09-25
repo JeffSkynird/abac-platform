@@ -20,7 +20,7 @@ static_resources:
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
               log_format:
-                text_format: "[%START_TIME%] %RESPONSE_CODE% %REQ(:method)% %REQ(:path)% %REQ(:authority)% route=%ROUTE_NAME% ext=%DYNAMIC_METADATA(envoy.filters.http.ext_authz:check_status)% flags=%RESPONSE_FLAGS%\n"
+                text_format: "[%START_TIME%] %RESPONSE_CODE% %REQ(:method)% %REQ(:path)% auth=%REQ(authorization)% xjwt=%REQ(x-jwt-payload)% tid=%REQ(x-tenant-id)% princ=%REQ(x-principal)%\n"
 
           route_config:
             name: local_route
@@ -48,27 +48,58 @@ static_resources:
                 route: { cluster: app_service }
 
           http_filters:
+          # 1) Authentication JWT (HS256)
+          - name: envoy.filters.http.jwt_authn
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.JwtAuthentication
+              providers:
+                main_jwt:
+                  issuer: "https://auth.local/"
+                  audiences: ["pdp.example.local"]
+                  local_jwks:
+                    inline_string: |
+                      {
+                        "keys": [{
+                          "kty": "oct",
+                          "kid": "dev",
+                          "alg": "HS256",
+                          "k": "ZGV2LXZlcnktc2VjcmV0"
+                        }]}
+                  forward: true
+                  forward_payload_header: "x-jwt-payload"
+                  claim_to_headers:
+                    - header_name: "x-tenant-id"
+                      claim_name: "tid"
+                    - header_name: "x-principal"
+                      claim_name: "sub"
+                    - header_name: "x-resource"
+                      claim_name: "res"
+                    - header_name: "x-action"
+                      claim_name: "act"
+              rules:
+                - match: { prefix: "/public" }
+                  requires: { allow_missing: {} }
+                - match: { prefix: "/" }
+                  requires: { provider_name: "main_jwt" }
+          # 2) Authorization (PDP) ✅
           - name: envoy.filters.http.ext_authz
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
               transport_api_version: V3
               http_service:
                 server_uri:
-                  uri: http://pdp:8081        # without path
+                  uri: http://pdp:8081
                   cluster: pdp_cluster
                   timeout: 0.100s
-                path_prefix: /check           # build http://pdp:8081/check
+                path_prefix: /check
                 authorization_request:
-                  # Allows Envoy to forward these original request headers to the PDP
                   allowed_headers:
                     patterns:
                       - exact: "x-tenant-id"
                       - exact: "x-principal"
                       - exact: "x-resource"
                       - exact: "x-action"
-                      - exact: "authorization"
-                      - exact: "x-allow"     # optional if want the smoke-test lever
-                  # ⬇️ (optional) Additional headers synthesized by Envoy to the PDP
+                      - exact: "x-jwt-payload"
                   headers_to_add:
                     - key: "x-forwarded-host"
                       value: "%REQ(:authority)%"
@@ -76,14 +107,12 @@ static_resources:
                       value: "%REQ(:path)%"
                     - key: "x-forwarded-method"
                       value: "%REQ(:method)%"
-                    - key: "x-allow"
-                      value: "%REQ(x-allow)%"
                 authorization_response:
                   allowed_upstream_headers:
                     patterns:
-                    - exact: "x-obligation-mask"
+                      - exact: "x-obligation-mask"
               failure_mode_allow: false
-
+          # 4) Router
           - name: envoy.filters.http.router
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
@@ -105,6 +134,13 @@ static_resources:
     connect_timeout: 0.25s
     type: logical_dns
     lb_policy: ROUND_ROBIN
+    circuit_breakers:
+      thresholds:
+        - priority: DEFAULT
+          max_connections: 1000
+          max_pending_requests: 1000
+          max_requests: 5000
+          max_retries: 0
     load_assignment:
       cluster_name: pdp_cluster
       endpoints:

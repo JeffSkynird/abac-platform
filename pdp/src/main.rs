@@ -30,8 +30,10 @@ struct AppState {
     default_decision_allow: bool,
     db: PgPool,
     redis_client: redis::Client,
-    // cache de políticas en memoria por tenant (version + PolicySet)
+    // In-memory policy cache per tenant (version + PolicySet)
     policies_cache: Arc<RwLock<HashMap<Uuid, (i32, PolicySet)>>>,
+    rate_limit_rps_default: u32,
+    claims_secret: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -56,6 +58,13 @@ enum PDPError {
     Other(String),
 }
 
+fn verify_claims_sig(secret: &str, tenant: &str, principal: &str, resource: &str, action: &str, sig: &str) -> bool {
+    let msg = format!("{}|{}|{}|{}", tenant, principal, resource, action);
+    let mut c: u32 = 0;
+    for b in (secret.to_owned() + "|" + &msg).bytes() { c = c.wrapping_add(b as u32); }
+    format!("{:08x}", c) == sig
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     println!("booting PDP {}", env!("CARGO_PKG_VERSION"));
@@ -67,7 +76,10 @@ async fn main() -> anyhow::Result<()> {
     let prom_handle = PrometheusBuilder::new().install_recorder()?;
     metrics::gauge!("pdp_build_info", "version" => env!("CARGO_PKG_VERSION")).set(1.0);
 
+    let rate_limit_rps_default = env::var("RATE_LIMIT_RPS_DEFAULT")
+        .ok().and_then(|s| s.parse::<u32>().ok()).unwrap_or(100);
 
+    let claims_secret = env::var("CLAIMS_SECRET").unwrap_or_else(|_| "dev-secret".into());
 
     // Flags
     let default_decision_allow = env::var("DEFAULT_ALLOW")
@@ -95,6 +107,8 @@ async fn main() -> anyhow::Result<()> {
         db,
         redis_client,
         policies_cache,
+        rate_limit_rps_default,
+        claims_secret,
     };
 
     // HTTP server
@@ -139,7 +153,6 @@ async fn check_impl(
 ) -> (StatusCode, Json<AuthzDecision>) {
     let started = Instant::now();
 
-    // Headers mínimos (temporal en MVP)
     let tenant_id = match headers.get("x-tenant-id").and_then(|v| v.to_str().ok()).and_then(|s| Uuid::parse_str(s).ok())
     {
         Some(t) => t,
@@ -162,12 +175,49 @@ async fn check_impl(
         .unwrap_or("read")
         .to_string();
 
-    // Puente de demo (como Fase 0)
     if let Some("1") = headers.get("x-allow").and_then(|v| v.to_str().ok()) {
         return allow("allowed by x-allow: 1");
     }
+    // --- Validate claims signature if applicable (defense of headers forged by client) ---
+    if let (Some(sig), Some(tid), Some(pri)) = (
+        headers.get("x-claims-sig").and_then(|v| v.to_str().ok()),
+        headers.get("x-tenant-id").and_then(|v| v.to_str().ok()),
+        headers.get("x-principal").and_then(|v| v.to_str().ok()),
+    ) {
+        let res_hdr = headers.get("x-resource").and_then(|v| v.to_str().ok()).unwrap_or("");
+        let act_hdr = headers.get("x-action").and_then(|v| v.to_str().ok()).unwrap_or("read");
+        if !verify_claims_sig(&state.claims_secret, tid, pri, res_hdr, act_hdr, sig) {
+            return (StatusCode::UNAUTHORIZED, Json(AuthzDecision{ decision: "DENY".into(), reason: "bad signature" .into() }));
+        }
+    }
 
-    // Contexto (MVP: fijo)
+    // --- Rate limit by tenant ---
+    // Simple policy: N RPS per tenant (approximate TOKEN BUCKET with counter/sec)
+    let mut over_limit = false;
+    if let Ok(mut conn) = get_redis_conn(&state.redis_client).await {
+        let now = time::OffsetDateTime::now_utc().unix_timestamp();
+        let window = format!("{}", now); // 1s bucket
+        let rate_key = format!("rl:{}:{}", tenant_id, window);
+        let limit = state.rate_limit_rps_default as i64;
+
+        match conn.incr::<_, _, i64>(&rate_key, 1).await {
+            Ok(count) => { 
+                let _ : redis::RedisResult<()> = conn.expire::<_, ()>(&rate_key, 2).await;
+                if count > limit { over_limit = true; }
+            }
+            Err(e) => {
+                warn!("ratelimit redis error: {e}");
+            }
+        }
+    }
+    if over_limit {
+        metrics::counter!("pdp_ratelimit_rejected_total").increment(1);
+        return (StatusCode::TOO_MANY_REQUESTS, Json(AuthzDecision{
+            decision: "DENY".into(),
+            reason: format!("rate limit > {} rps", state.rate_limit_rps_default),
+        }));
+    }
+
     let ctx_json = json!({
         "timeOfDay": "workhours",
         "path": original_path,
@@ -191,7 +241,7 @@ async fn check_impl(
 
     // DB: RLS tenant
     if let Err(e) = sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
-    .bind(tenant_id.to_string())   // set_config espera text
+    .bind(tenant_id.to_string())   
     .execute(&state.db)
     .await
     {
@@ -200,7 +250,7 @@ async fn check_impl(
         return deny("tenant set failed");
     }
 
-    // Policies activas
+    // Active Policies
     let (version, pset) = match load_policies_for_tenant(&state, tenant_id).await {
         Ok(v) => v,
         Err(e) => {
@@ -210,7 +260,7 @@ async fn check_impl(
         }
     };
 
-    // Atributos
+    // Attributes
     let principal_attrs = load_attrs(&state.db, "principals", &principal).await.unwrap_or(json!({}));
     let resource_attrs = load_attrs(&state.db, "resources", &resource).await.unwrap_or(json!({}));
 
@@ -235,8 +285,7 @@ async fn check_impl(
         return deny("invalid context");
     }
 
-    // --- Helpers para construir las entidades en dos formatos ---
-    // --- Helpers para partir Type::"id" ---
+    // --- Helpers to build entities in two formats ---
     fn split_type_and_id(uid: &str) -> Option<(String, String)> {
         let parts: Vec<&str> = uid.splitn(2, "::").collect();
         if parts.len() != 2 { return None; }
@@ -257,19 +306,19 @@ async fn check_impl(
         None => return deny("invalid resource UID format"),
     };
 
-    // ✅ Formato A (array) con uid STRING
+    // ✅ Format A (array) with uid STRING
     let ents_a = json!([
         { "uid": principal, "attrs": principal_attrs, "parents": [] },
         { "uid": resource,  "attrs": resource_attrs,  "parents": [] }
     ]);
 
-    // ✅ Formato B (array) con uid OBJETO {type,id}
+    // ✅ Format B (array) with uid OBJECT {type,id}
     let ents_b = json!([
         { "uid": { "type": p_type, "id": p_id }, "attrs": principal_attrs, "parents": [] },
         { "uid": { "type": r_type, "id": r_id }, "attrs": resource_attrs,  "parents": [] }
     ]);
 
-    // Parse con fallback y logs
+    // Parse with fallback and logs
     let entities_opt = match Entities::from_json_value(ents_a.clone(), None) {
         Ok(e) => Some(e),
         Err(ea) => {
@@ -293,13 +342,13 @@ async fn check_impl(
 
 
 
-    // Request (nota: Cedar v3 espera Option<EntityUid> para P/A/R y Context)
+    // Request (note: Cedar v3 expects Option<EntityUid> for P/A/R and Context)
     let req = match Request::new(Some(auid), Some(action_uid), Some(ruid), ctx_cedar.unwrap(), None) {
         Ok(r)  => r,
         Err(_) => return deny("invalid request"),
     };
 
-    // Autorizar
+    // Authorize
     let authz = Authorizer::new();
     let resp = authz.is_authorized(&req, &pset, &entities);
     let decision = if resp.decision() == Decision::Allow { "ALLOW" } else { "DENY" };
@@ -387,7 +436,6 @@ async fn load_policies_for_tenant(state: &AppState, tenant: Uuid) -> Result<(i32
     let mut pset = PolicySet::new();
     for (idx, r) in rows.iter().enumerate() {
         let cedar_text: String = r.try_get("cedar")?;
-        // Cedar v3: Policy::parse(id: Option<String>, src: &str)
         let pol = Policy::parse(Some(format!("p{}", idx)), &cedar_text)
             .map_err(|e| PDPError::Cedar(format!("{e:?}")))?;
         pset.add(pol).map_err(|e| PDPError::Cedar(format!("{e:?}")))?;
@@ -424,7 +472,7 @@ async fn spawn_redis_invalidation_listener(
     cache: Arc<RwLock<HashMap<Uuid, (i32, PolicySet)>>>,
 ) -> anyhow::Result<()> {
     tokio::spawn(async move {
-        // Para pub/sub, usamos una conexión "no multiplexada"
+        // For pub/sub, "non-multiplexed" connection
        match client.get_tokio_connection().await {
             Ok(conn) => {
                 let mut pubsub = conn.into_pubsub();
@@ -434,9 +482,7 @@ async fn spawn_redis_invalidation_listener(
                 }
                 info!("Subscribed to Redis invalidation channel {}", REDIS_INVALIDATION_CHANNEL);
                 loop {
-                    // on_message() devuelve un Stream; NO se await-ea directo.
                     if let Some(msg) = pubsub.on_message().next().await {
-                        // NO uses `if let Ok(payload): Result<...>` -> usa turbofish
                         if let Ok(payload) = msg.get_payload::<String>() {
                             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&payload) {
                                 if let Some(tid) = v.get("tenant_id")
