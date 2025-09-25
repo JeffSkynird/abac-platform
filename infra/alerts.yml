@@ -1,0 +1,34 @@
+groups:
+- name: pdp-alerts
+  rules:
+  # p95 > threshold (e.g., 8ms) por 5m
+  - alert: PDPHighLatencyP95
+    expr: |
+      histogram_quantile(0.95, rate(pdp_latency_ms_bucket[5m])) > 8
+    for: 5m
+    labels: { severity: page }
+    annotations:
+      summary: "PDP p95 latency high"
+      description: "p95 > 8ms for 5m"
+
+  # Cache hit ratio baja (< 0.8) por 10m
+  - alert: PDPLowCacheHit
+    expr: |
+      (rate(pdp_cache_hits_total[5m])) / clamp_min((rate(pdp_cache_hits_total[5m]) + rate(pdp_cache_misses_total[5m])), 1) < 0.8
+    for: 10m
+    labels: { severity: ticket }
+    annotations:
+      summary: "PDP cache hit ratio low"
+      description: "Cache hit < 80% durante 10m"
+
+  # 5xx en Envoy (hacia upstream app o PDP) > 1% por 10m
+  - alert: Envoy5xxRateHigh
+    expr: |
+      sum(rate(envoy_http_downstream_rq_xx{envoy_response_code_class="5"}[5m]))
+      /
+      clamp_min(sum(rate(envoy_http_downstream_rq_total[5m])), 1) > 0.01
+    for: 10m
+    labels: { severity: ticket }
+    annotations:
+      summary: "Envoy 5xx rate >1%"
+      description: "Downstream 5xx > 1% durante 10m"

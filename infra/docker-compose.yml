@@ -35,6 +35,8 @@ services:
       - RUST_BACKTRACE=1
       - DATABASE_URL=postgres://postgres:postgres@db:5432/abac
       - REDIS_URL=redis://redis:6379
+      - RATE_LIMIT_RPS_DEFAULT=100          # quota by tenant (seconds)
+      - CLAIMS_SECRET=<DEV_SHARED_SECRET_CHANGE_ME> 
     depends_on:
       db:
         condition: service_healthy
