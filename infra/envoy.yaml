@@ -59,16 +59,25 @@ static_resources:
                   timeout: 0.100s
                 path_prefix: /check           # build http://pdp:8081/check
                 authorization_request:
+                  # Allows Envoy to forward these original request headers to the PDP
+                  allowed_headers:
+                    patterns:
+                      - exact: "x-tenant-id"
+                      - exact: "x-principal"
+                      - exact: "x-resource"
+                      - exact: "x-action"
+                      - exact: "authorization"
+                      - exact: "x-allow"     # optional if want the smoke-test lever
+                  # ⬇️ (optional) Additional headers synthesized by Envoy to the PDP
                   headers_to_add:
-                  - key: "x-forwarded-host"
-                    value: "%REQ(:authority)%"
-                  - key: "x-forwarded-path"
-                    value: "%REQ(:path)%"
-                  - key: "x-forwarded-method"
-                    value: "%REQ(:method)%"
-                  # to test ALLOW
-                  - key: "x-allow"
-                    value: "%REQ(x-allow)%"
+                    - key: "x-forwarded-host"
+                      value: "%REQ(:authority)%"
+                    - key: "x-forwarded-path"
+                      value: "%REQ(:path)%"
+                    - key: "x-forwarded-method"
+                      value: "%REQ(:method)%"
+                    - key: "x-allow"
+                      value: "%REQ(x-allow)%"
                 authorization_response:
                   allowed_upstream_headers:
                     patterns:

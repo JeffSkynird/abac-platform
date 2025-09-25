@@ -8,6 +8,32 @@ axum = "0.7"
 tokio = { version = "1", features = ["full"] } 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+http = "1" 
+
+anyhow = "1"
+thiserror = "1"
+
+# Cedar
+cedar-policy = "3"
+
+# DB
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "uuid", "json"] }
+uuid = { version = "1", features = ["serde", "v4"] }
+
+# Redis
+redis = { version = "0.25", default-features = false, features = ["tokio-rustls-comp", "connection-manager"] }
+sha2 = "0.10"
+base64 = "0.22"
+
+# Metrics / tracing
+metrics = "=0.23.0"
+metrics-exporter-prometheus = "0.15.0" 
+
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-http = "1" 
+hdrhistogram = "7"
+
+# Util
+time = { version = "0.3", features = ["macros"] }
+
+futures = "0.3"
