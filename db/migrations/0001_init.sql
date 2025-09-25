@@ -1,0 +1,2 @@
+-- Placeholder: Tables and RLS.
+-- The 'abac' database is created using environment variables from the Postgres service.

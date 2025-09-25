@@ -1,0 +1,48 @@
+version: "3.9"
+
+services:
+  pdp:
+    build:
+      context: ../pdp
+      dockerfile: Dockerfile
+    environment:
+      - RUST_LOG=info
+      # DEFAULT_ALLOW=1  # uncomment to allow by default
+    ports:
+      - "8081:8081"   # PDP (HTTP /ready y /check)
+
+  app:
+    image: node:20
+    working_dir: /app
+    command: ["node","server.js"]
+    volumes:
+      - ../examples/app:/app
+    expose:
+      - "3000"
+
+  envoy:
+    image: envoyproxy/envoy:v1.31-latest
+    volumes:
+      - ./envoy.yaml:/etc/envoy/envoy.yaml:ro
+    depends_on:
+      - pdp
+      - app
+    ports:
+      - "8080:8080"
+      - "9901:9901"   # <— admin for debug
+
+  db:
+    image: postgres:15
+    environment:
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=abac
+    ports:
+      - "5432:5432"
+    volumes:
+      - ../db/migrations:/docker-entrypoint-initdb.d:ro
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"

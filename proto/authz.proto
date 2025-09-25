@@ -1,0 +1,36 @@
+syntax = "proto3";
+package authz.v1;
+
+message AttributeValue {
+  oneof kind {
+    string s   = 1;
+    int64  i   = 2;
+    double f   = 3;
+    bool   b   = 4;
+    bytes  raw = 5;
+  }
+}
+
+message Attributes { map<string, AttributeValue> items = 1; }
+
+message EvaluateRequest {
+  string tenant_id   = 1;
+  string principal   = 2;
+  string resource    = 3;
+  string action      = 4;
+  Attributes context = 5;
+  string policy_hint = 6;
+}
+
+enum Decision { DENY = 0; ALLOW = 1; }
+
+message EvaluateResponse {
+  Decision decision = 1;
+  Attributes obligations = 2;
+  string reason = 3;
+}
+
+service PDP {
+  rpc Evaluate(EvaluateRequest) returns (EvaluateResponse);
+  rpc Invalidate(Attributes) returns (Attributes);
+}
