@@ -1,36 +1,4 @@
-version: "3.9"
-
 services:
-  pdp:
-    build:
-      context: ../pdp
-      dockerfile: Dockerfile
-    environment:
-      - RUST_LOG=info
-      # DEFAULT_ALLOW=1  # uncomment to allow by default
-    ports:
-      - "8081:8081"   # PDP (HTTP /ready y /check)
-
-  app:
-    image: node:20
-    working_dir: /app
-    command: ["node","server.js"]
-    volumes:
-      - ../examples/app:/app
-    expose:
-      - "3000"
-
-  envoy:
-    image: envoyproxy/envoy:v1.31-latest
-    volumes:
-      - ./envoy.yaml:/etc/envoy/envoy.yaml:ro
-    depends_on:
-      - pdp
-      - app
-    ports:
-      - "8080:8080"
-      - "9901:9901"   # <— admin for debug
-
   db:
     image: postgres:15
     environment:
@@ -41,8 +9,72 @@ services:
       - "5432:5432"
     volumes:
       - ../db/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d abac"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
 
   redis:
     image: redis:7
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+
+  pdp:
+    build:
+      context: ../pdp
+      dockerfile: Dockerfile
+    environment:
+      - RUST_LOG=debug
+      - RUST_BACKTRACE=1
+      - DATABASE_URL=postgres://postgres:postgres@db:5432/abac
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: on-failure:5
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8081/ready"]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+      start_period: 10s
+
+
+  app:
+    image: node:20
+    working_dir: /app
+    command: ["node","server.js"]
+    volumes:
+      - ../examples/app:/app
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3000/public/health"]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+      start_period: 5s
+
+  envoy:
+    image: envoyproxy/envoy:v1.31-latest
+    volumes:
+      - ./envoy.yaml:/etc/envoy/envoy.yaml:ro
+    depends_on:
+      pdp:
+        condition: service_healthy
+      app:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+      - "9901:9901"
