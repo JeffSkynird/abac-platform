@@ -12,7 +12,7 @@ Stack: Envoy (ext_authz), PDP (Rust + Cedar), Postgres, Redis, Prometheus.
 * Dev JWT secret: `dev-very-secret` (dev only)
 * Scripts present:
   * `scripts/mint_jwt_hs256.sh`
-* Services up:
+* Services up (if you haven't done it):
   ```bash 
   cd infra && docker compose up --build -d && cd ..
   ```

@@ -270,6 +270,12 @@ async fn admin_test(
                 reason_origin = format!("active v{}", version);
                 pset
             }
+            Err(PDPError::Other(msg)) if msg == "no active policy_set" => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(AuthzDecision { decision: "DENY".into(), reason: "no active policy_set".into() })
+                );
+            }
             Err(e) => {
                 error!("load policies error: {e:?}");
                 return (
