@@ -80,3 +80,60 @@ services:
     ports:
       - "8080:8080"
       - "9901:9901"
+  
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    command:
+      - start-dev
+      - --import-realm
+      - --http-port=8080
+      - --hostname-url=http://localhost:8085
+      - --hostname-admin-url=http://localhost:8085
+      - --hostname-strict=false
+      - --hostname-strict-backchannel=false
+    environment:
+      - KEYCLOAK_ADMIN=admin
+      - KEYCLOAK_ADMIN_PASSWORD=admin
+    volumes:
+      - ../keycloak/realm-export:/opt/keycloak/data/import:ro
+    ports:
+      - "8085:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/realms/abac/.well-known/openid-configuration >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 15s
+
+  admin-api:
+    build:
+      context: ../admin-api
+      dockerfile: Dockerfile
+    environment:
+      - PORT=3001
+      - DB_URL=postgres://postgres:postgres@db:5432/abac
+      - REDIS_URL=redis://redis:6379
+      - PDP_BASE_URL=http://pdp:8081
+      - OIDC_ISSUER=http://keycloak:8080/realms/abac
+      - OIDC_AUDIENCE=admin-api
+      - OIDC_JWKS_URI=http://keycloak:8080/realms/abac/protocol/openid-connect/certs
+      - OIDC_ACCEPTED_ISSUERS=http://localhost:8085/realms/abac,http://keycloak:8080/realms/abac
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      pdp:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+    ports:
+      - "3001:3001"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    restart: on-failure:5
+

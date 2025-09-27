@@ -1,0 +1,52 @@
+{
+  "realm": "abac",
+  "enabled": true,
+  "clients": [{
+    "clientId": "admin-api",
+    "publicClient": true,
+    "directAccessGrantsEnabled": true,
+    "redirectUris": ["*"],
+    "defaultClientScopes": ["roles"],
+    "protocolMappers": [
+      {
+        "name": "aud-admin-api",
+        "protocol": "openid-connect",
+        "protocolMapper": "oidc-audience-mapper",
+        "consentRequired": false,
+        "config": {
+          "included.client.audience": "admin-api",
+          "access.token.claim": "true",
+          "id.token.claim": "false"
+        }
+      }
+    ]
+  }],
+  "roles": {
+    "realm": [
+      {"name":"admin","description":"full admin"},
+      {"name":"ops","description":"ops read/validate/test"}
+    ]
+  },
+  "users": [
+    {
+      "username": "alice-admin",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{"type":"password","value":"password"}],
+      "realmRoles": ["admin"],
+      "firstName": "Alice",
+      "lastName": "Admin",
+      "email": "alice@example.com"
+    },
+    {
+      "username": "oscar-ops",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{"type":"password","value":"password"}],
+      "realmRoles": ["ops"],
+      "firstName": "Oscar",
+      "lastName": "Ops",
+      "email": "oscar@example.com"
+    }
+  ]
+}
