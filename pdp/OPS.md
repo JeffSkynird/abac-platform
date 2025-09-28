@@ -188,6 +188,14 @@ curl -i -H "Authorization: Bearer $TOKEN" http://localhost:8080/
 
 > If `PUBSUB NUMSUB pdp:invalidate` shows `0`, PDP isn’t subscribed. Restart PDP.
 
+### 5.5 Validate and Test cedar policies
+
+```bash
+curl -X POST http://localhost:8081/admin/validate -H 'Content-Type: application/json' -d '{"policies":["permit(principal, action, resource);"]}'
+```
+```bash
+curl -X POST http://localhost:8081/admin/test -H 'Content-Type: application/json' -d '{"policies_override":["permit(principal, action, resource);"],"principal":"User::\"alice\"","resource":"Document::\"report-123\"","action":"view","context":{"env":"dev"}}'
+```
 ---
 
 ## 6) Per-Tenant Rate Limit (optional)

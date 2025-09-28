@@ -76,6 +76,7 @@ echo "${JWT:0:40}..."
 * `POST /api/policy-sets` *(admin)* → create **draft** `{ tenantId, baseVersion? }`
 * `GET /api/policy-sets?tenantId=…` *(admin|ops)* → list by tenant
 * `POST /api/policies` *(admin)* → add Cedar policy to draft `{ policySetId, cedar }`
+* `GET /api/policies?policySetId=..` *(admin)* → list policies by policySetId
 * `POST /api/policy-sets/:id/validate` *(admin|ops)* → validate draft (PDP proxy)
 * `POST /api/policy-sets/:id/test` *(admin|ops)* → what-if against draft (override) (PDP proxy)
 * `POST /api/policy-sets/test-active` *(admin|ops)* → what-if against **active** set `{ tenantId, ... }`
@@ -134,17 +135,39 @@ curl -s -H "Authorization: Bearer $JWT" -H "Content-Type: application/json" \
 
 ### 5) Validate draft (syntax/policies)
 
+Validate post policy (when policies is already created)
+
 ```bash
 curl -s -H "Authorization: Bearer $JWT" -X POST \
   http://localhost:3001/api/policy-sets/$DRAFT_ID/validate | jq
 ```
 
+Validate pre policy (when policies is still not created)
+
+```bash
+curl -s -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -X POST \
+  -d '{"policies":["policy cedar text..."]}' \
+  http://localhost:3001/api/policy-sets/pre-validate | jq
+```
+
 ### 6) Test “what-if” on draft (override)
+
+Test when Draft already has policies saved
 
 ```bash
 curl -s -H "Authorization: Bearer $JWT" -H "Content-Type: application/json" \
   -d '{"principal":{"type":"User","id":"123"},"resource":{"type":"Document","id":"abc"},"action":"read"}' \
   http://localhost:3001/api/policy-sets/$DRAFT_ID/test | jq
+```
+
+Test when Draft is not saved policies
+
+```bash
+curl -s -H "Authorization: Bearer $JWT" -H "Content-Type: application/json" \
+  -d '{"policies":["permit(principal, action, resource);"],"principal":{"type":"User","id":"123"},"resource":{"type":"Document","id":"abc"},"action":"read"}' \
+  http://localhost:3001/api/policy-sets/$DRAFT_ID/pre-test | jq
 ```
 
 ### 7) Promote draft → active

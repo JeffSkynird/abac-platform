@@ -1,0 +1,30 @@
+---
+import Layout from '../layouts/Layout.astro';
+import AppShell from '../components/AppShell';
+import { initAuth, login, isAuthenticated, isAuthConfigured, getMissingAuthConfig } from '../lib/auth';
+const authConfigured = isAuthConfigured();
+const missingConfig = getMissingAuthConfig();
+let authed = false;
+if (authConfigured) {
+  await initAuth();
+  authed = isAuthenticated();
+  if (authed) Astro.redirect('/');
+}
+---
+<Layout>
+  <AppShell client:load>
+    <div class="flex flex-col items-center justify-center py-24 gap-4">
+      <h1 class="text-2xl font-semibold">ABAC Admin — Login</h1>
+      {authConfigured ? (
+        <button class="px-4 py-2 rounded bg-white/10 hover:bg-white/20" onClick={() => login()}>
+          Login with Keycloak
+        </button>
+      ) : (
+        <div class="text-sm opacity-80 text-center">
+          <p>Keycloak no está configurado.</p>
+          <p class="mt-2">Define: {missingConfig.join(', ') || 'variables requeridas'}.</p>
+        </div>
+      )}
+    </div>
+  </AppShell>
+</Layout>

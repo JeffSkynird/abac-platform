@@ -1,0 +1,14 @@
+---
+import Layout from '../layouts/Layout.astro';
+import AuthGuard from '../components/AuthGuard';
+import AppShell from '../components/AppShell';
+import PolicySetList from '../components/PolicySetList';
+---
+<Layout>
+  <AuthGuard client:load>
+    <AppShell client:load>
+      <h1 class="text-xl font-semibold mb-4">Policy Sets</h1>
+      <PolicySetList client:load />
+    </AppShell>
+  </AuthGuard>
+</Layout>

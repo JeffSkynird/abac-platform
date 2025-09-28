@@ -1,0 +1,13 @@
+---
+import Layout from '../layouts/Layout.astro';
+import AuthGuard from '../components/AuthGuard';
+import AppShell from '../components/AppShell';
+import TenantList from '../components/TenantList';
+---
+<Layout>
+  <AuthGuard client:load>
+    <AppShell client:load>
+      <TenantList client:load />
+    </AppShell>
+  </AuthGuard>
+</Layout>
