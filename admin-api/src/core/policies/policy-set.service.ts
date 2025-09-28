@@ -19,6 +19,18 @@ export class PolicySetService {
     return this.repo.addPolicyToDraft(qr, policySetId, cedar);
   }
 
+  async listPolicies(qr: QueryRunner, policySetId: string) {
+    return this.repo.getPoliciesByPolicySet(qr, policySetId);
+  }
+
+  async updatePolicy(qr: QueryRunner, policyId: string, cedar: string, policySetId?: string) {
+    return this.repo.updatePolicyInDraft(qr, policyId, cedar, policySetId);
+  }
+
+  async deletePolicy(qr: QueryRunner, policyId: string, policySetId?: string) {
+    return this.repo.deletePolicyFromDraft(qr, policyId, policySetId);
+  }
+
   async validatePreDraft(policies: string[]) {
     return this.pdp.validate({ policies });
   }

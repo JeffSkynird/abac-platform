@@ -11,7 +11,7 @@ export default function AuthGuard({ children }: PropsWithChildren) {
     if (!isAuthConfigured()) {
       const missing = getMissingAuthConfig().join(', ');
       setError(
-        `Keycloak no está configurado. Define las variables de entorno públicas necesarias (${missing || 'ver documentación'}).`
+        `Keycloak is not configured. Define the necessary public environment variables. (${missing || 'see documentation'}).`
       );
       setReady(true);
       return () => {
@@ -27,9 +27,9 @@ export default function AuthGuard({ children }: PropsWithChildren) {
         if (!cancelled) setReady(true);
       })
       .catch((err) => {
-        console.error('Error inicializando Keycloak', err);
+        console.error('Error initializing Keycloak', err);
         if (cancelled) return;
-        setError('No se pudo iniciar sesión automáticamente. Verifica Keycloak y vuelve a intentar.');
+        setError('Automatic login failed. Please check Keycloak and try again.');
         setReady(true);
       });
     return () => {
@@ -48,7 +48,7 @@ export default function AuthGuard({ children }: PropsWithChildren) {
   if (!ready) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <span className="text-sm opacity-80">Verificando sesión…</span>
+        <span className="text-sm opacity-80">Verifying session…</span>
       </div>
     );
   }

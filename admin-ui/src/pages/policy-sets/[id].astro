@@ -2,22 +2,14 @@
 import Layout from '../../layouts/Layout.astro';
 import AuthGuard from '../../components/AuthGuard';
 import AppShell from '../../components/AppShell';
-import CedarEditor from '../../components/CedarEditor';
-import PolicyTestForm from '../../components/PolicyTestForm';
-import PromoteDialog from '../../components/PromoteDialog';
+import PolicySetDraftClient from '../../components/PolicySetDraftClient';
 export const prerender = false;
 const { id } = Astro.params;
 ---
 <Layout>
   <AuthGuard client:load>
     <AppShell client:load>
-      <h1 class="text-xl font-semibold mb-4">Policy Set {id}</h1>
-      <CedarEditor client:only="react" policySetId={id} />
-      <div class="my-6 h-px bg-white/10" />
-      <h2 class="text-lg font-semibold mb-2">What‑if Test</h2>
-      <PolicyTestForm client:load policySetId={id} />
-      <div class="my-6 h-px bg-white/10" />
-      <PromoteDialog client:load policySetId={id} />
+      <PolicySetDraftClient client:only="react" policySetId={id} />
     </AppShell>
   </AuthGuard>
 </Layout>

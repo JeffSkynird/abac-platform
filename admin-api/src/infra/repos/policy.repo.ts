@@ -44,6 +44,36 @@ export class PolicyRepo {
     return this.repoP(qr).save(p);
   }
 
+  async updatePolicyInDraft(qr: QueryRunner, policyId: string, cedar: string, policySetId?: string) {
+    const policy = await this.repoP(qr).findOne({ where: { id: policyId } });
+    if (!policy) throw new Error('policy not found');
+    if (policySetId && policy.policy_set_id !== policySetId) {
+      throw new Error('policy does not belong to policy set');
+    }
+
+    const ps = await this.repoPS(qr).findOne({ where: { id: policy.policy_set_id } });
+    if (!ps) throw new Error('policy set not found');
+    if (ps.status !== 'draft') throw new Error('policy set is not draft');
+
+    policy.cedar = cedar;
+    return this.repoP(qr).save(policy);
+  }
+
+  async deletePolicyFromDraft(qr: QueryRunner, policyId: string, policySetId?: string) {
+    const policy = await this.repoP(qr).findOne({ where: { id: policyId } });
+    if (!policy) throw new Error('policy not found');
+    if (policySetId && policy.policy_set_id !== policySetId) {
+      throw new Error('policy does not belong to policy set');
+    }
+
+    const ps = await this.repoPS(qr).findOne({ where: { id: policy.policy_set_id } });
+    if (!ps) throw new Error('policy set not found');
+    if (ps.status !== 'draft') throw new Error('policy set is not draft');
+
+    await this.repoP(qr).delete(policyId);
+    return { ok: true };
+  }
+
   async getPoliciesByPolicySet(qr: QueryRunner, policySetId: string) {
     return this.repoP(qr).find({ where: { policy_set_id: policySetId }, order: { created_at: 'ASC' } });
   }

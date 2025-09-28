@@ -1,12 +1,29 @@
-# 🛡️ ABAC Platform (Monorepo)
+# 🛡️ ABAC Platform
 
 ![status](https://img.shields.io/badge/status-admin_api-blue) ![license](https://img.shields.io/badge/license-MIT-black)
 
-Policy-driven authorization using **Cedar** with:
-- **Envoy** (ext_authz) in front of a demo app
-- **PDP (Rust+cedar)** + **Postgres** (policies, attrs, audit) + **Redis** (cache + pub/sub)
-- **Admin API (NestJS/Fastify)** to manage tenants, policies, entities
-- **Admin UI (Next.js)** _(coming soon)_
+<p align="center">
+  <img src="./admin-ui/images/dashboard.png" alt="Vista del Dashboard de Admin UI" width="48%">
+  &nbsp;&nbsp;
+  <img src="./admin-ui/images/policies.png" alt="Vista de gestión de Policies en Admin UI" width="48%">
+</p>
+
+## 🧩 At a Glance / Core Components
+
+Policy-driven authorization using **Cedar** with four primary components:
+
+- **Gateway**: **Envoy** (`ext_authz`) in front of a demo app.
+- **Authorization Service**: A **Rust-based PDP** using **Cedar**, with **Postgres** for storage and **Redis** for caching.
+- **Admin API**: A **NestJS (Fastify)** backend to manage tenants, policies, and entities.
+- **Admin UI**: An **Astro + React** frontend for policy and tenant management.
+
+## 🧱 Tech Stack
+
+* **Frontend**: Astro + React with TypeScript and Tailwind CSS.
+* **Backend**: NestJS (Fastify) for the admin API.
+* **Authorization Service**: Rust with the Cedar policy engine.
+* **Infrastructure**: Envoy (Proxy), Postgres (DB), Redis (Cache).
+* **Identity**: Keycloak (OIDC).
 
 ## 🚀 Quickstart
 ```bash
@@ -74,7 +91,7 @@ flowchart LR
 
 * [`pdp/`](pdp/) — Rust PDP service (Cedar, DB, Redis, metrics)
 * [`admin-api/`](admin-api/) — NestJS admin API (OIDC/Keycloak, CRUD for tenants/policies/entities)
-* `admin-ui/` — *(planned)* Next.js UI
+* [`admin-ui/`](admin-ui/) — Astro + React for policy and tenant management
 
 ## 🔐 Auth modes
 
@@ -88,6 +105,7 @@ flowchart LR
 ```
 .
 ├─ admin-api/      # NestJS admin API
+├─ admin-ui/       # Astro + React admin ui
 ├─ pdp/            # Rust PDP (Cedar)
 ├─ examples/app/   # demo app
 ├─ infra/          # compose + envoy + migrations
@@ -96,4 +114,6 @@ flowchart LR
 
 ## 📄 License
 
-MIT
+Copyright (c) 2025 Jefferson Leon.
+
+This project is licensed under the [MIT License](./LICENSE).

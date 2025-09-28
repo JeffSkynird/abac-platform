@@ -21,8 +21,8 @@ if (authConfigured) {
         </button>
       ) : (
         <div class="text-sm opacity-80 text-center">
-          <p>Keycloak no está configurado.</p>
-          <p class="mt-2">Define: {missingConfig.join(', ') || 'variables requeridas'}.</p>
+          <p>Keycloak is not configured.</p>
+          <p class="mt-2">Define: {missingConfig.join(', ') || 'required variables'}.</p>
         </div>
       )}
     </div>

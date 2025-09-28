@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Query, Body, UseGuards,Req } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Query, Body, UseGuards, Req, NotFoundException } from '@nestjs/common';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { DataSource } from 'typeorm';
@@ -24,6 +24,40 @@ export class EntitiesController {
     const qr = req.qr;
     const { tenantId, type, cedar_uid, attrs } = body;
     return this.repo.upsertEntity(qr, tenantId, type, cedar_uid, attrs);
+  }
+
+  @Put('entities/:type/:id')
+  @Roles('admin')
+  async update(
+    @Param('type') type: 'principal'|'resource',
+    @Param('id') id: string,
+    @Query('tenantId') tenantId: string,
+    @Body() body: any,
+    @Req() req: any
+  ) {
+    const qr = req.qr;
+    const { cedar_uid, attrs } = body ?? {};
+    const entity = await this.repo.updateEntity(qr, tenantId, type, id, { cedar_uid, attrs });
+    if (!entity) {
+      throw new NotFoundException('Entity not found');
+    }
+    return entity;
+  }
+
+  @Delete('entities/:type/:id')
+  @Roles('admin')
+  async remove(
+    @Param('type') type: 'principal'|'resource',
+    @Param('id') id: string,
+    @Query('tenantId') tenantId: string,
+    @Req() req: any
+  ) {
+    const qr = req.qr;
+    const deleted = await this.repo.deleteEntity(qr, tenantId, type, id);
+    if (!deleted) {
+      throw new NotFoundException('Entity not found');
+    }
+    return deleted;
   }
 
   

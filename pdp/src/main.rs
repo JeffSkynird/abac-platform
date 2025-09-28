@@ -51,12 +51,33 @@ struct AdminValidateResponse {
     errors: Vec<String>,
 }
 
+fn default_json_object() -> Value {
+    Value::Object(serde_json::Map::new())
+}
+
+#[derive(Deserialize, Clone)]
+struct EntityRequest {
+    #[serde(rename = "type")]
+    entity_type: String,
+    id: String,
+    // Usamos `serde(default)` para que los atributos sean opcionales
+    #[serde(default = "default_json_object")]
+    attributes: Value,
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(untagged)]
+enum EntityInput {
+    Uid(String),
+    Full(EntityRequest),
+}
+
 #[derive(Deserialize)]
 struct AdminTestRequest {
     policies_override: Option<Vec<String>>,
     tenant_id: Option<Uuid>,
-    principal: String,
-    resource: String,
+    principal: EntityInput,
+    resource: EntityInput,
     action: Option<String>,
     context: Option<Value>,
 }
@@ -211,9 +232,29 @@ async fn admin_test(
         context,
     } = req;
 
+    let (principal_uid_str, principal_inline_attrs) = match principal {
+        EntityInput::Uid(s) => (s, json!({})), // Si es string, no hay atributos inline.
+        EntityInput::Full(e) => (
+            format!(r#"{}::"{}""#, e.entity_type, e.id),
+            e.attributes,
+        ),
+    };
+
+    let (resource_uid_str, resource_inline_attrs) = match resource {
+        EntityInput::Uid(s) => (s, json!({})), // Si es string, no hay atributos inline.
+        EntityInput::Full(e) => (
+            format!(r#"{}::"{}""#, e.entity_type, e.id),
+            e.attributes,
+        ),
+    };
+
     let mut reason_origin = String::from("override");
+    let principal_attrs: Value;
+    let resource_attrs: Value;
 
     let policy_set = if let Some(policies) = policies_override {
+        principal_attrs = principal_inline_attrs;
+        resource_attrs = resource_inline_attrs;
         if let Some(tid) = tenant_id {
             if let Err(e) = set_tenant_context(&state.db, tid).await {
                 error!("set_config app.tenant_id failed: {e}");
@@ -265,6 +306,21 @@ async fn admin_test(
             );
         }
 
+        principal_attrs = match load_attrs(&state.db, "principals", &principal_uid_str).await {
+            Ok(attrs) => attrs,
+            Err(e) => {
+                warn!("load principal attrs error: {e:?}");
+                json!({})
+            }
+        };
+        resource_attrs = match load_attrs(&state.db, "resources", &resource_uid_str).await {
+            Ok(attrs) => attrs,
+            Err(e) => {
+                warn!("load resource attrs error: {e:?}");
+                json!({})
+            }
+        };
+        
         match load_policies_for_tenant(&state, tenant).await {
             Ok((version, pset)) => {
                 reason_origin = format!("active v{}", version);
@@ -292,7 +348,7 @@ async fn admin_test(
     let action_str = action.unwrap_or_else(|| "read".to_string());
     let ctx_json = context.unwrap_or_else(|| json!({}));
 
-    let principal_attrs = match load_attrs(&state.db, "principals", &principal).await {
+  /*   let principal_attrs = match load_attrs(&state.db, "principals", &principal).await {
         Ok(attrs) => attrs,
         Err(e) => {
             warn!("load principal attrs error: {e:?}");
@@ -305,9 +361,9 @@ async fn admin_test(
             warn!("load resource attrs error: {e:?}");
             json!({})
         }
-    };
+    }; */
 
-    let auid = match EntityUid::from_str(&principal) {
+    let auid = match EntityUid::from_str(&principal_uid_str) {
         Ok(u) => u,
         Err(_) => {
             return (
@@ -319,7 +375,7 @@ async fn admin_test(
             );
         }
     };
-    let ruid = match EntityUid::from_str(&resource) {
+    let ruid = match EntityUid::from_str(&resource_uid_str) {
         Ok(u) => u,
         Err(_) => {
             return (
@@ -358,7 +414,7 @@ async fn admin_test(
         }
     };
 
-    let entities = match build_entities(&principal, &resource, &principal_attrs, &resource_attrs) {
+    let entities = match build_entities(&principal_uid_str, &resource_uid_str, &principal_attrs, &resource_attrs) {
         Ok(entities) => entities,
         Err(PDPError::Other(reason)) => {
             return (
@@ -736,29 +792,21 @@ fn build_entities(
     let (r_type, r_id) = split_type_and_id(resource)
         .ok_or_else(|| PDPError::Other("invalid resource UID format".into()))?;
 
-    let ents_a = json!([
-        { "uid": principal, "attrs": principal_attrs.clone(), "parents": [] },
-        { "uid": resource,  "attrs": resource_attrs.clone(),  "parents": [] }
-    ]);
-    let ents_b = json!([
+    // Construye directamente el formato de objeto correcto.
+    let entities_json = json!([
         { "uid": { "type": p_type, "id": p_id }, "attrs": principal_attrs.clone(), "parents": [] },
         { "uid": { "type": r_type, "id": r_id }, "attrs": resource_attrs.clone(),  "parents": [] }
     ]);
 
-    match Entities::from_json_value(ents_a.clone(), None) {
+    // Intenta parsear solo el formato correcto.
+    match Entities::from_json_value(entities_json.clone(), None) {
         Ok(entities) => Ok(entities),
-        Err(ea) => {
-            warn!("cedar entities parse (array + string uid) failed: {ea:?}");
-            match Entities::from_json_value(ents_b.clone(), None) {
-                Ok(entities) => Ok(entities),
-                Err(eb) => {
-                    error!(
-                        "cedar entities parse failed both formats. A_err={ea:?}  B_err={eb:?}  A_json={}  B_json={}",
-                        ents_a, ents_b
-                    );
-                    Err(PDPError::Other("invalid entities".into()))
-                }
-            }
+        Err(e) => {
+            error!(
+                "cedar entities parse failed with object format. err={e:?} json={}",
+                entities_json
+            );
+            Err(PDPError::Other("invalid entities".into()))
         }
     }
 }

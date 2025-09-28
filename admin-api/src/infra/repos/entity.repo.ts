@@ -29,6 +29,61 @@ export class EntityRepo {
     return rows[0];
   }
 
+  async updateEntity(
+    qr: QueryRunner,
+    tenantId: string,
+    type: 'principal'|'resource',
+    id: string,
+    updates: { cedar_uid?: string; attrs?: any }
+  ) {
+    const table = type === 'principal' ? 'principals' : 'resources';
+    const setters: string[] = [];
+    const params: any[] = [];
+    let idx = 1;
+
+    if (updates.cedar_uid !== undefined) {
+      setters.push(`cedar_uid = $${idx++}`);
+      params.push(updates.cedar_uid);
+    }
+
+    if (updates.attrs !== undefined) {
+      setters.push(`attrs = $${idx++}`);
+      params.push(updates.attrs ?? {});
+    }
+
+    if (!setters.length) {
+      const rows = await qr.query(
+        `SELECT * FROM ${table} WHERE tenant_id = $1 AND id = $2 LIMIT 1`,
+        [tenantId, id]
+      );
+      return rows[0];
+    }
+
+    const tenantIdx = idx++;
+    const idIdx = idx++;
+    params.push(tenantId, id);
+
+    const rows = await qr.query(
+      `UPDATE ${table} SET ${setters.join(', ')} WHERE tenant_id = $${tenantIdx} AND id = $${idIdx} RETURNING *`,
+      params
+    );
+    return rows[0];
+  }
+
+  async deleteEntity(
+    qr: QueryRunner,
+    tenantId: string,
+    type: 'principal'|'resource',
+    id: string
+  ) {
+    const table = type === 'principal' ? 'principals' : 'resources';
+    const rows = await qr.query(
+      `DELETE FROM ${table} WHERE tenant_id = $1 AND id = $2 RETURNING *`,
+      [tenantId, id]
+    );
+    return rows[0];
+  }
+
   async upsertAttribute(qr: QueryRunner, tenantId: string, entity_type: 'principal'|'resource', entity_uid: string, key: string, value: any) {
     const rows = await qr.query(
       `INSERT INTO attributes (tenant_id, entity_type, entity_uid, key, value)
