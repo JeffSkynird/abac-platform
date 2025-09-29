@@ -1,0 +1,15 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import AuthGuard from '../../components/AuthGuard';
+import AppShell from '../../components/AppShell';
+import PolicySetDraftClient from '../../components/PolicySetDraftClient';
+export const prerender = false;
+const { id } = Astro.params;
+---
+<Layout>
+  <AuthGuard client:load>
+    <AppShell client:load>
+      <PolicySetDraftClient client:only="react" policySetId={id} />
+    </AppShell>
+  </AuthGuard>
+</Layout>

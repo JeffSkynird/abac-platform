@@ -9,7 +9,11 @@ export class PdpHttp implements PdpPort {
 
   async validate(req: ValidateReq): Promise<ValidateRes> {
     try {
+      console.log("VALIDATE");
+      console.log(req);
       const { data } = await axios.post(`${this.base}/admin/validate`, req);
+      console.log("Response VALIDATE");
+      console.log(data)
       return data;
     } catch (e) {
       const err = e as AxiosError;

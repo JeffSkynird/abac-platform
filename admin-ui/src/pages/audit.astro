@@ -1,0 +1,15 @@
+---
+import Layout from '../layouts/Layout.astro';
+import AuthGuard from '../components/AuthGuard';
+import AppShell from '../components/AppShell';
+import AuditTable from '../components/AuditTable';
+export const prerender = false;
+const tenantId = Astro.url.searchParams.get('tenantId') ?? '';
+---
+<Layout>
+  <AuthGuard client:load>
+    <AppShell client:load>
+      <AuditTable client:load tenantId={tenantId} />
+    </AppShell>
+  </AuthGuard>
+</Layout>

@@ -2,7 +2,7 @@ import { Controller, Post, Get, Param, Body, Query, UseGuards, UsePipes, Req } f
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { ZodValidationPipe } from '../common/zod-pipe';
-import { CreateDraftDto, AddPolicyDto, TestDraftDto, TestActiveDto } from './dtos/policy-set.dtos';
+import { CreateDraftDto, AddPolicyDto, TestDraftDto, TestActiveDto, PreValidatePoliciesDto, PreTestDraftDto } from './dtos/policy-set.dtos';
 import { DataSource } from 'typeorm';
 import { PolicySetService } from '../core/policies/policy-set.service';
 import { PolicyRepo } from '../infra/repos/policy.repo';
@@ -39,7 +39,14 @@ export class PolicySetsController {
   @Roles('admin','ops')
   async validate(@Param('id') id: string, @Req() req: any) {
     const qr = req.qr;
-    return this.svc.validateDraft(qr, id);
+    return this.svc.validatePostDraft(qr, id);
+  }
+
+  @Post('policy-sets/pre-validate')
+  @Roles('admin','ops')
+  @UsePipes(new ZodValidationPipe(PreValidatePoliciesDto))
+  async preValidate(@Body() dto: any) {
+    return this.svc.validatePreDraft(dto.policies);
   }
 
   @Post('policy-sets/:id/test')
@@ -51,6 +58,20 @@ export class PolicySetsController {
       resource: body.resource,
       action: body.action,
       context: body.context
+    });
+  }
+
+  @Post('policy-sets/:id/pre-test')
+  @Roles('admin','ops')
+  async preTestDraft(
+    @Param('id') _id: string,
+    @Body(new ZodValidationPipe(PreTestDraftDto)) dto: any
+  ) {
+    return this.svc.testPreDraft(dto.policies, {
+      principal: dto.principal,
+      resource: dto.resource,
+      action: dto.action,
+      context: dto.context
     });
   }
 

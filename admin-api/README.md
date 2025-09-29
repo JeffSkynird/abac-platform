@@ -76,6 +76,9 @@ echo "${JWT:0:40}..."
 * `POST /api/policy-sets` *(admin)* → create **draft** `{ tenantId, baseVersion? }`
 * `GET /api/policy-sets?tenantId=…` *(admin|ops)* → list by tenant
 * `POST /api/policies` *(admin)* → add Cedar policy to draft `{ policySetId, cedar }`
+* `PUT /api/policies` *(admin)* → update Cedar policy in draft `{ policyId, cedar, policySetId? }`
+* `DELETE /api/policies/:id` *(admin)* → remove policy from draft `?policySetId=` (optional guard)
+* `GET /api/policies?policySetId=..` *(admin)* → list policies by policySetId
 * `POST /api/policy-sets/:id/validate` *(admin|ops)* → validate draft (PDP proxy)
 * `POST /api/policy-sets/:id/test` *(admin|ops)* → what-if against draft (override) (PDP proxy)
 * `POST /api/policy-sets/test-active` *(admin|ops)* → what-if against **active** set `{ tenantId, ... }`
@@ -86,6 +89,8 @@ echo "${JWT:0:40}..."
 * `GET /api/entities?tenantId=…&type=principal|resource&page=&limit=` *(admin|ops)*
 * `POST /api/entities` *(admin)* → upsert
   `{ tenantId, type: 'principal'|'resource', cedar_uid: 'Type::"id"', attrs: {...} }`
+* `PUT /api/entities/:type/:id?tenantId=…` *(admin)* → update Cedar entity (attrs and/or cedar_uid)
+* `DELETE /api/entities/:type/:id?tenantId=…` *(admin)* → delete Cedar entity
 * `GET /api/entity-attributes?tenantId=…&type=…&uid?=…` *(admin|ops)*
 * `POST /api/entity-attributes` *(admin)* → upsert
   `{ tenantId, entity_type, entity_uid, key, value }`
@@ -124,7 +129,9 @@ DRAFT_ID=$(echo "$DRAFT" | jq -r .id)
 echo "$DRAFT_ID"
 ```
 
-### 4) Add Cedar policy to draft
+### 4) Manage draft policies
+
+#### Add Cedar policy to draft
 
 ```bash
 curl -s -H "Authorization: Bearer $JWT" -H "Content-Type: application/json" \
@@ -132,19 +139,65 @@ curl -s -H "Authorization: Bearer $JWT" -H "Content-Type: application/json" \
   http://localhost:3001/api/policies | jq
 ```
 
+#### List policies in draft
+
+```bash
+curl -s -H "Authorization: Bearer $JWT" \
+  "http://localhost:3001/api/policies?policySetId=$DRAFT_ID" | jq
+```
+
+#### Update policy Cedar text
+
+```bash
+POLICY_ID="<policy-uuid>"
+curl -s -H "Authorization: Bearer $JWT" -H "Content-Type: application/json" \
+  -X PUT \
+  -d "{\"policyId\":\"$POLICY_ID\",\"cedar\":\"permit(principal == User::\\\"123\\\", action == Action::\\\"delete\\\", resource == Document::\\\"abc\\\");\",\"policySetId\":\"$DRAFT_ID\"}" \
+  http://localhost:3001/api/policies | jq
+```
+
+#### Delete policy from draft
+
+```bash
+curl -s -H "Authorization: Bearer $JWT" \
+  -X DELETE "http://localhost:3001/api/policies/$POLICY_ID?policySetId=$DRAFT_ID" | jq
+```
+
 ### 5) Validate draft (syntax/policies)
+
+Validate post policy (when policies is already created)
 
 ```bash
 curl -s -H "Authorization: Bearer $JWT" -X POST \
   http://localhost:3001/api/policy-sets/$DRAFT_ID/validate | jq
 ```
 
+Validate pre policy (when policies is still not created)
+
+```bash
+curl -s -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -X POST \
+  -d '{"policies":["policy cedar text..."]}' \
+  http://localhost:3001/api/policy-sets/pre-validate | jq
+```
+
 ### 6) Test “what-if” on draft (override)
+
+Test when Draft already has policies saved
 
 ```bash
 curl -s -H "Authorization: Bearer $JWT" -H "Content-Type: application/json" \
   -d '{"principal":{"type":"User","id":"123"},"resource":{"type":"Document","id":"abc"},"action":"read"}' \
   http://localhost:3001/api/policy-sets/$DRAFT_ID/test | jq
+```
+
+Test when Draft is not saved policies
+
+```bash
+curl -s -H "Authorization: Bearer $JWT" -H "Content-Type: application/json" \
+  -d '{"policies":["permit(principal, action, resource);"],"principal":{"type":"User","id":"123"},"resource":{"type":"Document","id":"abc"},"action":"read"}' \
+  http://localhost:3001/api/policy-sets/$DRAFT_ID/pre-test | jq
 ```
 
 ### 7) Promote draft → active
@@ -174,11 +227,28 @@ curl -s -H "Authorization: Bearer $JWT" -H "Content-Type: application/json" \
   }' http://localhost:3001/api/entities | jq
 ```
 
-### 10) List Entities
+### 10) List, Edit, Delete Entities
 
+#### List
 ```bash
 curl -s -H "Authorization: Bearer $JWT" \
   "http://localhost:3001/api/entities?tenantId=$TENANT_ID&type=principal&page=1&limit=20" | jq
+```
+#### Update
+```bash
+curl -s -H "Authorization: Bearer $JWT" -H "Content-Type: application/json" \
+  -X PUT \
+  -d '{
+    "cedar_uid":"User::\"123\"",
+    "attrs":{"department":"ops","country":"EC"}
+  }' \
+  "http://localhost:3001/api/entities/principal/$ENTITY_ID?tenantId=$TENANT_ID" | jq
+```
+#### Delete
+```bash
+curl -s -H "Authorization: Bearer $JWT" \
+  -X DELETE \
+  "http://localhost:3001/api/entities/principal/$ENTITY_ID?tenantId=$TENANT_ID" | jq
 ```
 
 ### 11) Audit (latest N) [TODO]

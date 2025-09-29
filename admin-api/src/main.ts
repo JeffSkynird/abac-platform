@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import { AppModule } from './app.module';
+import cors from '@fastify/cors'; 
 
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
@@ -8,6 +9,10 @@ async function bootstrap() {
     new FastifyAdapter(),
     { logger: ['error','warn','log'] }
   );
+  await app.register(cors, {
+    origin: 'http://localhost:4321',
+    credentials: true,
+  });
 
   const helmet: any = require('@fastify/helmet');
   await (app as any).register(helmet as any, { contentSecurityPolicy: false });

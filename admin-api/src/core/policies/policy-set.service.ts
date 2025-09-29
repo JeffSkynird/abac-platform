@@ -19,7 +19,23 @@ export class PolicySetService {
     return this.repo.addPolicyToDraft(qr, policySetId, cedar);
   }
 
-  async validateDraft(qr: QueryRunner, policySetId: string) {
+  async listPolicies(qr: QueryRunner, policySetId: string) {
+    return this.repo.getPoliciesByPolicySet(qr, policySetId);
+  }
+
+  async updatePolicy(qr: QueryRunner, policyId: string, cedar: string, policySetId?: string) {
+    return this.repo.updatePolicyInDraft(qr, policyId, cedar, policySetId);
+  }
+
+  async deletePolicy(qr: QueryRunner, policyId: string, policySetId?: string) {
+    return this.repo.deletePolicyFromDraft(qr, policyId, policySetId);
+  }
+
+  async validatePreDraft(policies: string[]) {
+    return this.pdp.validate({ policies });
+  }
+
+  async validatePostDraft(qr: QueryRunner, policySetId: string) {
     const policies = await this.repo.getPoliciesByPolicySet(qr, policySetId);
     const cedarArr = policies.map(p => p.cedar);
     return this.pdp.validate({ policies: cedarArr });
@@ -33,8 +49,26 @@ export class PolicySetService {
     ? { type: 'Action', id: payload.action }
     : payload.action;
 
+    console.log("TEST DRAFT");
+    console.log(cedarArr);
     return this.pdp.testDraft({
       policies_override: cedarArr,
+      principal: payload.principal,
+      resource: payload.resource,
+      action: actionObj,
+      context: payload.context
+    });
+  }
+
+  async testPreDraft(policies: string[], payload: { principal:any; resource:any; action:string | { type: string; id: string }; context?:any }) {
+    const actionObj = typeof payload.action === 'string'
+    ? { type: 'Action', id: payload.action }
+    : payload.action;
+
+    console.log("TEST PRE DRAFT");
+    console.log(policies);
+    return this.pdp.testDraft({
+      policies_override: policies,
       principal: payload.principal,
       resource: payload.resource,
       action: actionObj,
